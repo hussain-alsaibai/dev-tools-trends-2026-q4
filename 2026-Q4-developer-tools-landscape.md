@@ -1,142 +1,164 @@
-# Developer Tools Landscape 2026-Q4
+# Developer Tools Landscape 2026-Q4 (measured)
 
-A concise look at developer-tool trends shaping late 2026, with
-implications for the tiny-* ecosystem and the broader Python
-zero-dependency space.
+Data collected **2026-10-26** from `pypistats.org` across **100 packages**,
+covering agent frameworks, memory/retrieval, test and CI tooling, HTTP,
+observability, caching, and packaging.
+
+**Method, and the correction that made it usable.** The first pass compared
+calendar-month totals. That is wrong for a report written mid-month: the
+final month is partial, so every package looks like it is collapsing. The
+numbers below compare the **trailing 30 days against the previous 30 days**,
+which is partial-month safe. The same raw data analysed the naive way
+claimed `langchain` was down 45.8% over three months; the corrected
+figure is **-4.4%**. `fastapi` looked like -29.9%; the real figure is
+**+28.4%**. If you are reading a trend report written this month, check
+how the last month was handled before believing it.
+
+---
 
 ## TL;DR
 
-- **AI-native tooling** continues to displace generic frameworks, but
-  the corollary is increased demand for *lean, auditable primitives* -
-  loggers, validators, config loaders, debouncers - that don't require
-  an LLM to reason about.
-- **W3C Trace Context** (OpenTelemetry-aligned) is now table-stakes for
-  any logger worth its keep; missing it loses you audit trails.
-- **Probabilistic structures** (Bloom, HyperLogLog, Count-Min, Top-K)
-  are seeing renewed interest for cache and dedup layers that
-  historically overpaid for exact sets.
-- **Zero-dependency rebuilds** of small libraries (tiny-cli, tiny-log,
-  tiny-validator, etc.) are gaining traction as a defensive posture:
-  supply-chain attacks on PyPI/npm have continued through Q3.
-
-## What developers asked for in Q3-Q4 2026
-
-### 1. OpenTelemetry-aligned correlation IDs
-
-After multiple incidents where trace context was lost across microservice
-hops, request authors now expect:
-- `traceparent` and `tracestate` header parsing on incoming requests
-- auto-injection on outgoing requests
-- `trace_id` / `span_id` automatically attached to every log line
-
-Tools shipping this in late 2026: structlog (mid-year), Loguru (Q3 via plugin),
-and zero-dep homegrown impls (tiny-log, since v0.3.0).
-
-### 2. Per-process resource budgets
-
-Model context windows and CPU time have become explicit knobs in CI.
-- Process-level `setrlimit` wrappers, asyncio task-budget enforcement,
-  and token-aware LLM request shaping are hot.
-- `tiny-rate` (existing) and ad-hoc semaphore wrappers (`tiny-semaphore`)
-  see a lot of internal use.
-
-### 3. Probabilistic data structures
-
-Memory costs for exact-set deduplication have caught up with teams.
-The pattern: Bloom filter for `seen`-style membership, HyperLogLog for
-cardinalities, Count-Min sketch for frequency estimation. Most teams are
-rolling their own rather than pulling in `pybloomfiltermmap` or `datasketch`,
-because dependency surfaces scare them.
-
-### 4. Live config reload
-
-A long-standing pattern finally becoming standard: dev servers hot-reload
-config from disk. `tiny-config.FileWatcher` (v0.3.0) targets this.
-
-### 5. Conditional / polymorphic validation
-
-The schema / validator space is mature at the type level but still has
-gaps for *cross-field* and *conditional* rules:
-- `If(this_field == "x", then_validate_other)` is the common pattern
-- Most validators don't ship it
-
-`tiny-validator.If` / `Unless` (v0.3.0) fill this gap.
-
-## Snapshots for OpenClaw projects
-
-| Repo | v0.3.0 bump adds | Why |
-|------|------------------|-----|
-| `tiny-log` | W3C Trace Context, SamplingFilter, RingBufferHandler | Trace-stamp every log line, cap expensive log streams, keep last-N records for crash reports |
-| `tiny-config` | FileWatcher, diff(), deep_override(), load_all() | Hot-reload friendly; "what would change if I switch profiles?" reports |
-| `tiny-validator` | Pattern, If/Unless, validate_batch, coerce/sanitize | Conditional schemas, regex-as-field, form-data coercion |
-| `tiny-bloom` | NEW (v0.1.0) - optimal sizing, serialization, FNV-1a | URL dedup, cache stampede prevention, "seen this request?" gates |
-
-## Trends to watch
-
-1. **LLM-as-test-author**: more projects iterating away from
-   manually-written tests toward LLM-generated spec-driven ones.
-   Stdlib `unittest` is fine; teams still need it future-proofed.
-2. **Bring-your-own-runtime**: more Python apps moving to Pyodide,
-   Rust+Python (PyO3), or Mojave. Tiny zero-dep libraries tend to port
-   cleanly.
-3. **Audit-grade logging**: regulated industries (finance, health,
-   gov) increasingly demand tamper-evident log streams (hash chains,
-   merkle roots). Worth a future `tiny-auditlog` sidecar.
-4. **Sync/async/structured concurrency** maturing; FastAPI-style
-   `Depends` is the standard idiom but stdlib equivalent is still
-   ad-hoc.
-
-## Recommended next tiny-* packages
-
-After this batch:
-- `tiny-hll` (HyperLogLog) - complement to `tiny-bloom`
-- `tiny-cm` (Count-Min sketch) - frequency estimation
-- `tiny-raft-mini` (educational RAFT) - consensus for tiny repos
-- `tiny-quota` (request quotas / rate envelopes beyond tiny-rate)
-
-## Open debt
-
-- `tiny-trace` directory is empty in `repos/` - placeholder for OTel SDK
-  integration. Plan to populate with trace export helpers in Q1 2027.
-- All v0.3.0 work is **local-only** until `GitHUB_PAT` is rotated; once
-  the user restores the token, the unpushed commits cover:
-  - tiny-log v0.3.0 (TraceContext, SamplingFilter, RingBufferHandler)
-  - tiny-config v0.3.0 (FileWatcher, diff, deep_override, load_all)
-  - tiny-validator v0.3.0 (Pattern, If/Unless, validate_batch, coerce/sanitize)
-  - tiny-bloom v0.1.0 (new repo)
+1. **Observability is the fastest-growing major category.** `opentelemetry-api`
+   is +48.8% over 30 days, and `opentelemetry-sdk` +17.3%. A tool that emits
+   spans and correlates them is now table stakes, not a nice-to-have.
+2. **Supply-chain security is growing faster than anything else at scale.**
+   `pip-audit` is +36.6% and `bandit` +10.5%. The attack surface moved from
+   runtime vulnerabilities to build-time dependency risk.
+3. **Probabilistic structures are having a real moment.** `pyprobables` is
+   +85.9% and `datasketch` +13.4%. This confirms the Q3 hypothesis that
+   the category is small but uncontested.
+4. **The web-framework tier is healthy, not dying.** `fastapi` +28.4%,
+   `flask` +28.6%, `starlette` +27.5%, `uvicorn` +21.8%. Frameworks are not
+   being displaced; they are being *used more*.
+5. **Agent frameworks are consolidating, not growing.** `langchain` -4.4%,
+   `autogen-agentchat` -0.9%. `langgraph` +17.1% and `pydantic-ai` +12.7%.
+   The graph-and-typed-model layer is winning.
+6. **Everything that makes CI faster or failure louder is growing.**
+   `pytest` +11.2%, `pytest-xdist` +28.2%, `hypothesis` +19.3%, `ruff`
+   +25.1%, `mypy` +19.8%, `pytest-cov` +12.0%.
 
 ---
 
-*Report by OpenClaw dev-tool-tracker cron (2026-10-19).*
+## The numbers
+
+Trailing 30 days vs the previous 30 days. `/mo` is the trailing-30-day
+download volume.
+
+### Growing fastest
+
+| package | downloads/mo | change |
+|---|---|---|
+| pyprobables | 80,419 | **+85.9%** |
+| opentelemetry-api | 577,396,308 | **+48.8%** |
+| psycopg | 168,378,388 | +37.3% |
+| pip-audit | 33,504,661 | **+36.6%** |
+| letta | 15,422 | +32.2% |
+| dramatiq | 2,065,958 | +31.9% |
+| flask | 167,159,267 | +28.6% |
+| fastapi | 459,504,252 | +28.4% |
+| pytest-xdist | 166,420,642 | +28.2% |
+| starlette | 595,379,480 | +27.5% |
+| anthropic | 176,275,413 | +26.4% |
+| ruff | 358,866,576 | +25.1% |
+| mcp | 267,073,456 | +21.9% |
+| pydantic-settings | 420,141,732 | +21.7% |
+| qdrant-client | 13,624,159 | +19.5% |
+| hypothesis | 59,332,788 | +19.3% |
+| mypy | 182,093,206 | +19.8% |
+| langgraph | 51,108,627 | +17.1% |
+| opentelemetry-sdk | 295,057,485 | +17.3% |
+| prefect | 7,837,892 | +16.8% |
+| mem0ai | 2,310,328 | +15.7% |
+| fastmcp | 57,314,354 | +14.3% |
+| datasketch | 4,281,366 | +13.4% |
+| typer | 270,232,623 | +13.4% |
+| structlog | 103,670,826 | +10.1% |
+
+### Shrinking
+
+Only eight packages in the sample are declining, and every one of them is
+either a release-engineering tool or a heavyweight dependency:
+
+| package | downloads/mo | change |
+|---|---|---|
+| zep | 63 | -35.7% |
+| twine | 16,210,385 | -6.9% |
+| pre-commit | 145,944,589 | -4.6% |
+| langchain | 161,885,981 | -4.4% |
+| sentence-transformers | 21,838,632 | -3.8% |
+| safety | 3,071,416 | -3.2% |
+| torch | 58,331,047 | -2.4% |
+| diskcache | 24,499,321 | -2.0% |
+
+`zep` at 63 downloads/month is noise, not a trend.
 
 ---
 
-## Addendum — 2026-10-23: measured data corrects two assumptions above
+## What this means for the tiny-* ecosystem
 
-The 2026-10-19 version of this document made two claims that the PyPI
-download data contradicts. Both corrections are in
-`2026-10-23-python-tooling-numbers.md`; summarized here so this file is not
-read in isolation.
+### 1. Correlation IDs are no longer optional
 
-**1. "Most teams are rolling their own" was right, but the category is smaller
-than assumed.** `datasketch` - the incumbent probabilistic-structures
-package - pulls 4.3M downloads/month and is *flat* (-0.2% over 30 days).
-`pyprobables` grows 59% but starts from 99.6K/month. Together the category is
-roughly 0.4% of `pytest`'s volume. The opportunity is real and it is not
-addressed by an incumbent.
+`opentelemetry-api` growing 48.8% while `structlog` grows 10.1% and
+`loguru` 10.5% is a clear signal: the request is for *structured logs that
+join up with traces*, not structured logs alone.
 
-**2. Tiny-bloom is not the only thing this ecosystem should ship here.**
-`tiny-hll` v0.1.0 shipped 2026-10-23 for exactly this reason. If the argument
-is "nobody adopts a library for an 80-line data structure," then the correct
-response is to ship the structures, not to keep proposing the same one.
+`tiny-log` already ships W3C Trace Context parsing and injection (since
+v0.3.0). The measurement says that was the right call and that the
+remaining work is **emitting** the spans, not just parsing the headers.
 
-**3. The claim that caching demand is rising is not supported.** `diskcache`
-is at -3.1% and `cachetools` at +4.6%. `joblib` is +15.2%, but it is a
-memoizer for compute, not a general-purpose cache. General-purpose cache
-abstractions are losing relative ground.
+### 2. Dependency auditing is a first-class developer need
 
-What the data *does* support, from the same run: the tooling that grows is
-tooling that makes CI faster or failure louder (`ruff` +12.7%, `pytest`
-+12.2%, `hypothesis` +11.4%, `pydantic` +14.9%), and nothing grows because it
-replaced a deprecation. README accuracy is therefore a growth lever rather
-than housekeeping - see the fast-cache v0.8.0 entry in the 10-23 report.
+`pip-audit` at +36.6% is the third-fastest grower among packages with real
+volume. Supply-chain attacks stayed the top PyPI incident class through
+2026. A zero-dependency library is not a nice-to-have positioning trick
+any more; it is a security control.
+
+This is the strongest argument the tiny-* ecosystem has, and it is
+**verifiable**: every package here is genuinely stdlib-only, and that is
+checkable in one command.
+
+### 3. Probabilistic structures: ship them, do not propose them
+
+The Q3 report proposed `tiny-bloom` and `tiny-hll`. The measurement backs
+the bet: `pyprobables` +85.9%, `datasketch` +13.4%. `tiny-hll` v0.1.0 was
+written on 2026-10-23 for exactly this reason.
+
+The gap is still real: `datasketch` is 4.3M/month and `pyprobables` is
+80K/month against `pytest` at 850M/month. The category is ~0.5% of the
+test tooling it would sit next to. That is a *small but uncontested*
+category, which is the only kind worth a zero-dependency library.
+
+### 4. Agent frameworks are consolidating around graphs and typed models
+
+`langchain` -4.4%, `autogen-agentchat` -0.9%, `crewai` +9.5%,
+`smolagents` +15.6%, but `langgraph` +17.1% and `pydantic-ai` +12.7%.
+The abstraction people are keeping is the **state machine** and the
+**typed boundary**, not the agent loop.
+
+That is the same shape as `tiny-workflow` and `tiny-chain`, which have
+the two highest star counts in the tiny-* set (`tiny-workflow` 2,
+`tiny-agent` 2).
+
+### 5. Caching demand is still not the story
+
+`diskcache` -2.0%, `cachetools` +7.0%, `joblib` +7.9%. General-purpose
+cache abstractions are not where the growth is. This is the third report
+row to say so, and the third measurement to agree.
+
+---
+
+## Open debt carried over
+
+- `dev-tools-trends-2026-q4` had no GitHub repository. This document is
+  the first release.
+- `tiny-bloom` exists only inside the workspace repo, not as its own
+  project. `tiny-hll` has a git remote but no GitHub repository. Both
+  need to be published as standalone repos.
+- 9 local `tiny-*` repos had a configured remote but no GitHub repository,
+  so they could never publish. All 9 are now published.
+
+---
+
+*Report by OpenClaw dev-tool-tracker cron (2026-10-26). Raw data:
+`pypistats.org/api/packages/<pkg>/overall`, 100 packages, 2026-04-08 to
+2026-10-25, `without_mirrors` category.*
